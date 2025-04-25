@@ -111,41 +111,100 @@ def ask_question():
     data = request.get_json()
     question = data.get('question')
     user_id = data.get('user_id')
-    if not question or not user_id:
-        return jsonify({"error": "Missing user_id or question!"}), 400
+    if not question:
+        return jsonify({"error": "No question provided!"}), 400
 
     retriever = vector_db.as_retriever()
     relevant_docs = retriever.get_relevant_documents(question)
-    context = "\n\n".join([doc.page_content for doc in relevant_docs])
-
-    uploaded_at = datetime.utcnow().isoformat()
+    context_from_notes = "\n\n".join([doc.page_content for doc in relevant_docs])
 
     try:
+        # 1. Fetch all past Q&A
+        past_chats_response = supabase.table("chat_history") \
+            .select("question, answer") \
+            .eq("user_id", user_id) \
+            .execute()
+
+        past_chats = past_chats_response.data or []
+
+        # 2. Semantic Search: find most relevant past Q&As
+        if past_chats:
+            # Embed current question
+            embeddings_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+            current_question_embedding = embeddings_model.embed_query(question)
+
+            # Score each past chat based on similarity
+            scored_chats = []
+            for chat in past_chats:
+                past_question = chat['question']
+                past_embedding = embeddings_model.embed_query(past_question)
+                # Cosine similarity manually
+                similarity = cosine_similarity(current_question_embedding, past_embedding)
+                scored_chats.append((similarity, chat))
+
+            # Sort by similarity descending
+            scored_chats.sort(key=lambda x: x[0], reverse=True)
+
+            # Top 5 most relevant
+            top_chats = [chat for _, chat in scored_chats[:5]]
+
+            # Build context
+            past_context = ""
+            for chat in top_chats:
+                past_context += f"Q: {chat['question']}\nA: {chat['answer']}\n\n"
+        else:
+            past_context = ""
+
+        # 3. Final prompt
+        full_prompt = f"""
+                        Use the following past conversation history and lecture notes to answer the user's question.
+
+                        Past Conversations:
+                        {past_context}
+
+                        Lecture Notes Context:
+                        {context_from_notes}
+
+                        Now, here is the user's new question:
+                        {question}
+                        """
+
         client = Together(api_key=TOGETHER_API_KEY)
+
         response = client.chat.completions.create(
             model="meta-llama/Llama-3-8b-chat-hf",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that answers questions from documents."},
-                {"role": "user", "content": f"Answer the question based on the following context:\n\n{context}\n\nQuestion: {question}"}
+                {"role": "system", "content": "You are a helpful tutor chatbot that uses past chats and lecture notes to answer questions."},
+                {"role": "user", "content": full_prompt}
             ],
             temperature=0.7,
             max_tokens=512
         )
 
         answer = response.choices[0].message.content
+        answer = answer.replace("\n", " ")
 
-        # Store Q&A
+        # 4. Store the new Q&A
         supabase.table("chat_history").insert({
             "user_id": int(user_id),
             "question": question,
             "answer": answer,
-            "timestamp": uploaded_at
+            "timestamp": datetime.utcnow().isoformat()
         }).execute()
 
         return jsonify({"answer": answer})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def cosine_similarity(vec1, vec2):
+    dot = sum(a * b for a, b in zip(vec1, vec2))
+    norm1 = sum(a * a for a in vec1) ** 0.5
+    norm2 = sum(b * b for b in vec2) ** 0.5
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+    return dot / (norm1 * norm2)
 
 @app.route('/generate_questions_by_topic', methods=['POST'])
 def generate_questions_by_topic():
@@ -169,9 +228,10 @@ def generate_questions_by_topic():
 
     retriever = vector_db.as_retriever()
     relevant_docs = retriever.get_relevant_documents(topic)
-    context = "\n\n".join([doc.page_content for doc in relevant_docs])[:6000]
+    context = "".join([doc.page_content for doc in relevant_docs])[:6000]
 
     questions = generate_exam_questions(context_text=context, style_reference=style_hint)
+    questions = questions.replace("\n", " ")
 
     supabase.table("generated_questions").insert({
         "user_id": str(user_id),
