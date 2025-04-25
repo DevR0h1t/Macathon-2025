@@ -11,31 +11,40 @@ from langchain_community.vectorstores import FAISS
 
 from together import Together
 
+from supabase import create_client, Client
+
+from datetime import datetime
+
 # Load environment variables
 load_dotenv()
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+# Initialize Supabase client
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
 
-# In-memory FAISS vector database
-vector_db = None
+# Helper functions
+def extract_text_from_pdf(file_path):
+    text = ""
+    doc = fitz.open(file_path)
+    for page in doc:
+        text += page.get_text()
+    return text
 
+def chunk_text(text, chunk_size=500, chunk_overlap=50):
+    splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    return splitter.split_text(text)
 
 def generate_exam_questions(context_text, style_reference=None):
     try:
         client = Together(api_key=TOGETHER_API_KEY)
-
-        style_instruction = (
-            f" Match the style of the following example question:\n{style_reference}\n"
-            if style_reference else ""
-        )
-
-        prompt = (
-            f"Based on the following lecture content, generate 5 exam-style questions that test understanding of the topic."
-            f"{style_instruction}\n\nLecture Notes:\n{context_text}\n\nQuestions:"
-        )
+        style_instruction = f" Match the style of the following example question:\n{style_reference}\n" if style_reference else ""
+        prompt = f"Based on the following lecture content, generate 5 exam-style questions that test understanding of the topic.{style_instruction}\n\nLecture Notes:\n{context_text}\n\nQuestions:"
 
         response = client.chat.completions.create(
             model="meta-llama/Llama-3-8b-chat-hf",
@@ -51,66 +60,42 @@ def generate_exam_questions(context_text, style_reference=None):
     except Exception as e:
         return f"Error generating questions: {str(e)}"
 
-
-
-# --- PDF Processing Functions ---
-def extract_text_from_pdf(file_path):
-    text = ""
-    doc = fitz.open(file_path)
-    for page in doc:
-        text += page.get_text()
-    return text
-
-def chunk_text(text, chunk_size=500, chunk_overlap=50):
-    splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    return splitter.split_text(text)
-
-def store_pdf(file_path):
-    global vector_db
-    raw_text = extract_text_from_pdf(file_path)
-    chunks = chunk_text(raw_text)
-
-    # Store in FAISS DB
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-    vector_db = FAISS.from_texts(chunks, embeddings)
-    vector_db.save_local("faiss_index")
-
-    # Generate questions (from full text or just first chunk)
-    questions = generate_exam_questions(raw_text[:2000])  # LLM token limit safety
-
-    with open("generated_questions.txt", "w") as f:
-        f.write(questions)
-
-    return "PDF processed, stored, and exam questions generated!"
-
-
-# --- Routes ---
 @app.route('/upload', methods=['POST'])
 def upload_pdf():
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
+
+    user_id = request.form.get("user_id")
+    if not user_id:
+        return jsonify({"error": "No user_id provided!"}), 400
 
     file = request.files['file']
     file_path = os.path.join("uploads", file.filename)
     os.makedirs("uploads", exist_ok=True)
     file.save(file_path)
 
+    uploaded_at = datetime.utcnow().isoformat()
+
     try:
         global vector_db
         raw_text = extract_text_from_pdf(file_path)
         chunks = chunk_text(raw_text)
 
-        # Store in FAISS vector DB
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         vector_db = FAISS.from_texts(chunks, embeddings)
         vector_db.save_local("faiss_index")
+
+        # Store document metadata
+        supabase.table("documents").insert({
+            "user_id": int(user_id),
+            "file_name": file.filename,
+            "timestamp": uploaded_at
+        }).execute()
 
         return jsonify({"message": "Lecture notes uploaded and indexed successfully."})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
 
 @app.route('/ask', methods=['POST'])
 def ask_question():
@@ -125,16 +110,18 @@ def ask_question():
 
     data = request.get_json()
     question = data.get('question')
-    if not question:
-        return jsonify({"error": "No question provided!"}), 400
+    user_id = data.get('user_id')
+    if not question or not user_id:
+        return jsonify({"error": "Missing user_id or question!"}), 400
 
     retriever = vector_db.as_retriever()
     relevant_docs = retriever.get_relevant_documents(question)
     context = "\n\n".join([doc.page_content for doc in relevant_docs])
 
+    uploaded_at = datetime.utcnow().isoformat()
+
     try:
         client = Together(api_key=TOGETHER_API_KEY)
-
         response = client.chat.completions.create(
             model="meta-llama/Llama-3-8b-chat-hf",
             messages=[
@@ -146,11 +133,19 @@ def ask_question():
         )
 
         answer = response.choices[0].message.content
+
+        # Store Q&A
+        supabase.table("chat_history").insert({
+            "user_id": int(user_id),
+            "question": question,
+            "answer": answer,
+            "timestamp": uploaded_at
+        }).execute()
+
         return jsonify({"answer": answer})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/generate_questions_by_topic', methods=['POST'])
 def generate_questions_by_topic():
@@ -165,22 +160,28 @@ def generate_questions_by_topic():
 
     data = request.get_json()
     topic = data.get('topic')
-    sample_style = data.get('style')  # Optional
+    style_hint = data.get('style')
+    user_id = data.get('user_id')
+    uploaded_at = datetime.utcnow().isoformat()
 
-    if not topic:
-        return jsonify({"error": "No topic provided!"}), 400
+    if not topic or not user_id:
+        return jsonify({"error": "Missing topic or user_id!"}), 400
 
     retriever = vector_db.as_retriever()
     relevant_docs = retriever.get_relevant_documents(topic)
-    context = "\n\n".join([doc.page_content for doc in relevant_docs])
-    context = context[:6000] 
+    context = "\n\n".join([doc.page_content for doc in relevant_docs])[:6000]
 
-    questions = generate_exam_questions(context_text=context, style_reference=sample_style)
+    questions = generate_exam_questions(context_text=context, style_reference=style_hint)
+
+    supabase.table("generated_questions").insert({
+        "user_id": str(user_id),
+        "topic": topic,
+        "style": style_hint or "",
+        "questions": questions,
+        "timestamp": uploaded_at
+    }).execute()
 
     return jsonify({"topic": topic, "questions": questions})
 
-
-
-# --- Run App ---
 if __name__ == "__main__":
     app.run(debug=True)
