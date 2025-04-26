@@ -105,7 +105,7 @@ export default function LectureQuestionBank() {
     setIsLoading(true);
     
     try {
-      const response = await fetch('/generate_questions_by_topic', {
+      const response = await fetch('${API_BASE_URL}/generate_questions_by_topic', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -131,7 +131,7 @@ export default function LectureQuestionBank() {
     if (!currentUnit) return;
     
     try {
-      const response = await fetch(`/question_sets?user_id=${userId}&unit_id=${currentUnit.id}`);
+      const response = await fetch(`${API_BASE_URL}/question_sets?user_id=${userId}&unit_id=${currentUnit.id}`);
       const data = await response.json();
       setPreviousSets(data);
     } catch (error) {
@@ -170,7 +170,7 @@ export default function LectureQuestionBank() {
 
   const handleSearch = async () => {
     try {
-      const response = await fetch(`/search_questions_by_topic?user_id=${userId}&unit_id=${currentUnit.id}&topic=${searchTerm}`);
+      const response = await fetch(`${API_BASE_URL}/search_questions_by_topic?user_id=${userId}&unit_id=${currentUnit.id}&topic=${searchTerm}`);
       const data = await response.json();
       setPreviousSets(data);
     } catch (error) {
