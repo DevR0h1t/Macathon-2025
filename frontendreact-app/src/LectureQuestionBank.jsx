@@ -40,7 +40,7 @@ export default function LectureQuestionBank() {
   const handleCreateUnit = async () => {
     if (newUnitTitle.trim()) {
       try {
-        const response = await fetch('${API_BASE_URL}/units', {
+        const response = await fetch(`${API_BASE_URL}/units`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -91,7 +91,7 @@ export default function LectureQuestionBank() {
         // Show success notification
       });
       
-      xhr.open('POST', '/upload');
+      xhr.open('POST', `${API_BASE_URL}/upload`);
       xhr.send(formData);
     } catch (error) {
       setUploading(false);
@@ -105,7 +105,7 @@ export default function LectureQuestionBank() {
     setIsLoading(true);
     
     try {
-      const response = await fetch('${API_BASE_URL}/generate_questions_by_topic', {
+      const response = await fetch(`${API_BASE_URL}/generate_questions_by_topic`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -241,7 +241,7 @@ def manage_units():
             return jsonify({"error": "Missing user_id or title"}), 400
 
         # Get the count of existing units for this user
-        existing_units = supabase.table("units").select("id").eq("user_id", int(user_id)).execute()
+        existing_units = supabase.table("units").select("id").eq("user_id", (user_id)).execute()
         unit_count = len(existing_units.data) + 1
 
         # Create custom unit_id in format "user_id-unit_number"
@@ -249,11 +249,11 @@ def manage_units():
 
         # Store in Supabase
         result = supabase.table("units").insert({
-            "id": custom_unit_id,
+            #"id": custom_unit_id,
             "user_id": int(user_id),
             "title": title,
             "unit_number": unit_count,
-            "created_at": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat()
         }).execute()
 
         return jsonify(result.data[0])
