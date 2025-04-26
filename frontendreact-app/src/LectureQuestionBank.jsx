@@ -146,24 +146,46 @@ export default function LectureQuestionBank() {
   
   const loadPreviousQuestionSets = async () => {
     if (!currentUnit) return;
-    
+  
     try {
       const response = await fetch(`${API_BASE_URL}/question_sets?user_id=${userId}&unit_id=${currentUnit.id}`);
       const data = await response.json();
-
-      const formatted = data.map(set => ({
-        ...set,
-        questions: typeof set.structured_questions === 'string'
-          ? JSON.parse(set.structured_questions)
-          : set.structured_questions,
-        type: set.style  // Normalize field so frontend displays correctly
-      }));
-
+  
+      const formatted = data.map(set => {
+        let parsedQuestions = [];
+  
+        if (typeof set.structured_questions === 'string') {
+          try {
+            parsedQuestions = JSON.parse(set.structured_questions);
+          } catch (e) {
+            console.error("Error parsing structured_questions:", e);
+          }
+        } else if (Array.isArray(set.structured_questions)) {
+          parsedQuestions = set.structured_questions;
+        }
+  
+        const normalizedQuestions = parsedQuestions.map((q, index) => ({
+          id: q.id ?? index,
+          question: q.question ?? "",
+          options: q.options ?? [],  // multiple choice options
+          correctAnswer: q.correctAnswer ?? (typeof q.answer === "boolean" ? q.answer : undefined),
+          answer: typeof q.answer === "string" ? q.answer : undefined  // open-ended
+        }));
+  
+        return {
+          id: set.id,
+          topic: set.topic,
+          type: set.style || set.type || "open-ended", // always fallback safe
+          questions: normalizedQuestions
+        };
+      });
+  
       setPreviousSets(formatted);
     } catch (error) {
       console.error("Error fetching question sets:", error);
     }
   };
+  
   
   // Use this in useEffect
   useEffect(() => {
@@ -458,7 +480,7 @@ export default function LectureQuestionBank() {
                         </div>
                       )}
 
-                      {generatedQuestions.type === 'open-ended' && (
+                      {generatedQuestions.type === 'open-ended' && q.answer && (
                         <div className="mt-2">
                           <button
                             onClick={() => toggleAnswer(q.id || index)}
