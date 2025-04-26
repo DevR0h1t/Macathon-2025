@@ -101,9 +101,9 @@ export default function LectureQuestionBank() {
 
   const handleGenerateQuestions = async () => {
     if (!topic.trim()) return;
-    
+  
     setIsLoading(true);
-    
+  
     try {
       const response = await fetch(`${API_BASE_URL}/generate_questions_by_topic`, {
         method: 'POST',
@@ -115,18 +115,35 @@ export default function LectureQuestionBank() {
           unit_id: currentUnit.id
         })
       });
-      
+  
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Failed to generate questions:", errorData.error);
+        alert("Failed to generate questions: " + errorData.error);
+        setIsLoading(false);
+        return;
+      }
+  
       const data = await response.json();
-      setGeneratedQuestions(data);
-      loadPreviousQuestionSets(); // Refresh the list
+  
+      const formattedData = {
+        ...data,
+        type: data.question_type   // 👈 FIX type mismatch
+      };
+  
+      setPreviousSets(prev => [formattedData, ...prev]);  // 🔥 ADD the new generated one on top
+      setGeneratedQuestions(formattedData); // ✅ Set this as selected question set
       setIsLoading(false);
       setTopic('');
     } catch (error) {
       setIsLoading(false);
       console.error("Error generating questions:", error);
+      alert("Something went wrong generating questions.");
     }
   };
-
+  
+  
+  
   const loadPreviousQuestionSets = async () => {
     if (!currentUnit) return;
     
@@ -368,27 +385,27 @@ export default function LectureQuestionBank() {
                     </button>
                   </div>
                 </div>
-                
+
                 <ul className="space-y-4">
-                  {generatedQuestions.questions.map((q) => (
-                    <li key={q.id} className="border border-gray-200 rounded-md p-4">
+                  {generatedQuestions.questions && generatedQuestions.questions.map((q, index) => (
+                    <li key={index} className="border border-gray-200 rounded-md p-4">
                       <p className="font-medium mb-2">{q.question}</p>
-                      
-                      {generatedQuestions.type === 'multiple-choice' && (
+
+                      {generatedQuestions.type === 'multiple-choice' && q.options && (
                         <div className="space-y-2 pl-4">
                           {q.options.map((option) => (
                             <button
                               key={option}
-                              onClick={() => handleAnswerSelect(q.id, option)}
+                              onClick={() => handleAnswerSelect(q.id || index, option)}
                               className={`w-full text-left p-2 rounded-md flex items-center ${
-                                userAnswers[q.id] === option
+                                userAnswers[q.id || index] === option
                                   ? option === q.correctAnswer
                                     ? 'bg-green-100 border-green-300'
                                     : 'bg-red-100 border-red-300'
                                   : 'bg-gray-50 hover:bg-gray-100 border-gray-200'
                               } border`}
                             >
-                              {userAnswers[q.id] === option ? (
+                              {userAnswers[q.id || index] === option ? (
                                 option === q.correctAnswer ? (
                                   <Check className="h-5 w-5 text-green-600 mr-2" />
                                 ) : (
@@ -398,53 +415,38 @@ export default function LectureQuestionBank() {
                                 <div className="h-5 w-5 mr-2" />
                               )}
                               {option}
-                              {userAnswers[q.id] && option === q.correctAnswer && userAnswers[q.id] !== option && (
-                                <span className="ml-2 text-green-600 text-sm">(Correct answer)</span>
-                              )}
                             </button>
                           ))}
                         </div>
                       )}
-                      
+
                       {generatedQuestions.type === 'true-false' && (
                         <div className="space-y-2 pl-4">
                           {[true, false].map((option) => (
                             <button
                               key={option.toString()}
-                              onClick={() => handleAnswerSelect(q.id, option)}
+                              onClick={() => handleAnswerSelect(q.id || index, option)}
                               className={`w-full text-left p-2 rounded-md flex items-center ${
-                                userAnswers[q.id] === option
+                                userAnswers[q.id || index] === option
                                   ? option === q.correctAnswer
                                     ? 'bg-green-100 border-green-300'
                                     : 'bg-red-100 border-red-300'
                                   : 'bg-gray-50 hover:bg-gray-100 border-gray-200'
                               } border`}
                             >
-                              {userAnswers[q.id] === option ? (
-                                option === q.correctAnswer ? (
-                                  <Check className="h-5 w-5 text-green-600 mr-2" />
-                                ) : (
-                                  <X className="h-5 w-5 text-red-600 mr-2" />
-                                )
-                              ) : (
-                                <div className="h-5 w-5 mr-2" />
-                              )}
                               {option ? 'True' : 'False'}
-                              {userAnswers[q.id] !== undefined && option === q.correctAnswer && userAnswers[q.id] !== option && (
-                                <span className="ml-2 text-green-600 text-sm">(Correct answer)</span>
-                              )}
                             </button>
                           ))}
                         </div>
                       )}
-                      
+
                       {generatedQuestions.type === 'open-ended' && (
                         <div className="mt-2">
                           <button
-                            onClick={() => toggleAnswer(q.id)}
+                            onClick={() => toggleAnswer(q.id || index)}
                             className="flex items-center text-indigo-600 hover:text-indigo-800"
                           >
-                            {showAnswers[q.id] ? (
+                            {showAnswers[q.id || index] ? (
                               <>
                                 <EyeOff className="h-4 w-4 mr-1" />
                                 Hide Answer
@@ -456,8 +458,8 @@ export default function LectureQuestionBank() {
                               </>
                             )}
                           </button>
-                          
-                          {showAnswers[q.id] && (
+
+                          {showAnswers[q.id || index] && (
                             <div className="mt-2 p-3 bg-gray-50 rounded-md">
                               <p className="text-gray-700">{q.answer}</p>
                             </div>
@@ -469,6 +471,7 @@ export default function LectureQuestionBank() {
                 </ul>
               </section>
             )}
+
             
             {/* Previous Question Sets */}
             <section className="bg-white p-6 rounded-lg shadow-md">

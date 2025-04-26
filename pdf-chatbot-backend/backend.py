@@ -324,7 +324,7 @@ def generate_questions_by_topic():
         "user_id": str(user_id),
         "unit_id": str(unit_id),
         "topic": topic,
-        "style": question_type,
+        "question_type": question_type,
         "raw_questions": raw_questions,
         "structured_questions": structured_questions,
         "timestamp": uploaded_at
