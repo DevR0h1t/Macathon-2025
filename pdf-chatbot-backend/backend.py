@@ -302,13 +302,25 @@ def generate_questions_by_topic():
         return jsonify({"error": "No lecture notes processed for this unit!"}), 400
 
     if question_type == 'multiple-choice':
-        style_hint = "Generate 5 multiple choice questions, each with 4 options."
+        style_hint = (
+            "Generate 5 multiple choice questions in this format:\n"
+            "Question X: ...\n"
+            "A) ...\nB) ...\nC) ...\nD) ...\n"
+            "Answer: X)"
+        )
     elif question_type == 'true-false':
-        style_hint = "Generate 5 true or false questions."
+        style_hint = (
+            "Generate 5 true/false questions in this format:\n"
+            "Question X: ...\nAnswer: True/False"
+        )
     elif question_type == 'open-ended':
-        style_hint = "Generate 5 open-ended questions with model answers."
+        style_hint = (
+            "Generate 5 open-ended questions in this format:\n"
+            "Question X: ...\nAnswer: ..."
+        )
     else:
-        style_hint = None
+        style_hint=None
+
 
     retriever = vector_db.as_retriever()
     relevant_docs = retriever.get_relevant_documents(topic)
