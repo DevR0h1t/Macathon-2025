@@ -150,7 +150,16 @@ export default function LectureQuestionBank() {
     try {
       const response = await fetch(`${API_BASE_URL}/question_sets?user_id=${userId}&unit_id=${currentUnit.id}`);
       const data = await response.json();
-      setPreviousSets(data);
+
+      const formatted = data.map(set => ({
+        ...set,
+        questions: typeof set.structured_questions === 'string'
+          ? JSON.parse(set.structured_questions)
+          : set.structured_questions,
+        type: set.style  // Normalize field so frontend displays correctly
+      }));
+
+      setPreviousSets(formatted);
     } catch (error) {
       console.error("Error fetching question sets:", error);
     }
@@ -189,7 +198,16 @@ export default function LectureQuestionBank() {
     try {
       const response = await fetch(`${API_BASE_URL}/search_questions_by_topic?user_id=${userId}&unit_id=${currentUnit.id}&topic=${searchTerm}`);
       const data = await response.json();
-      setPreviousSets(data);
+
+      const formatted = data.map(set => ({
+        ...set,
+        questions: typeof set.structured_questions === 'string'
+          ? JSON.parse(set.structured_questions)
+          : set.structured_questions,
+        type: set.style  // Normalize field so frontend displays correctly
+      }));
+
+      setPreviousSets(formatted);
     } catch (error) {
       console.error("Error searching question sets:", error);
     }
