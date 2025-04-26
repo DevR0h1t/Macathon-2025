@@ -65,32 +65,31 @@ export default function LectureQuestionBank() {
 
   const handleUploadPDF = async (event) => {
     const file = event.target.files[0];
-    if (!file) return;
-    
+    if (!file || !currentUnit) return;
+  
     setUploading(true);
     setUploadProgress(0);
-    
+  
     const formData = new FormData();
     formData.append('file', file);
     formData.append('user_id', userId);
     formData.append('unit_id', currentUnit.id);
-    
+  
     try {
-      // You'll need to implement progress tracking
       const xhr = new XMLHttpRequest();
-      
+  
       xhr.upload.addEventListener('progress', (event) => {
         if (event.lengthComputable) {
           const progress = Math.round((event.loaded / event.total) * 100);
           setUploadProgress(progress);
         }
       });
-      
+  
       xhr.addEventListener('load', () => {
         setUploading(false);
-        // Show success notification
+        // Optional: show toast or success message
       });
-      
+  
       xhr.open('POST', `${API_BASE_URL}/upload`);
       xhr.send(formData);
     } catch (error) {
@@ -98,6 +97,7 @@ export default function LectureQuestionBank() {
       console.error("Error uploading PDF:", error);
     }
   };
+  
 
   const handleGenerateQuestions = async () => {
     if (!topic.trim()) return;
@@ -275,13 +275,23 @@ export default function LectureQuestionBank() {
                   <p className="text-sm text-gray-600">Uploading... {uploadProgress}%</p>
                 </div>
               ) : (
-                <button
-                  onClick={handleUploadPDF}
-                  className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-                >
-                  <Upload className="mr-2 h-5 w-5" />
-                  Upload PDF
-                </button>
+                <>
+                  <input
+                    type="file"
+                    id="fileInput"
+                    accept=".pdf"
+                    onChange={handleUploadPDF}
+                    style={{ display: "none" }}
+                  />
+            
+                  <label
+                    htmlFor="fileInput"
+                    className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer"
+                  >
+                    <Upload className="mr-2 h-5 w-5" />
+                    Upload PDF
+                  </label>
+                </>
               )}
             </section>
             

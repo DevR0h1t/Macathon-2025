@@ -64,26 +64,26 @@ def generate_exam_questions(context_text, style_reference=None):
 @app.route('/upload', methods=['POST'])
 def upload_pdf():
     if 'file' not in request.files:
+        print("No file in request!")
         return jsonify({"error": "No file part"}), 400
 
     user_id = request.form.get("user_id")
     unit_id = request.form.get("unit_id")
 
     if not user_id or not unit_id:
+        print("Missing user_id or unit_id!")
         return jsonify({"error": "Missing user_id or unit_id"}), 400
-    
-    # Create a directory structure that organizes by user and unit
-    dir_path = os.path.join("uploads", str(user_id), str(unit_id))
-    os.makedirs(dir_path, exist_ok=True)
-
-    file = request.files['file']
-    file_path = os.path.join("uploads", file.filename)
-    os.makedirs("uploads", exist_ok=True)
-    file.save(file_path)
-
-    uploaded_at = datetime.utcnow().isoformat()
 
     try:
+        dir_path = os.path.join("uploads", str(user_id), str(unit_id))
+        os.makedirs(dir_path, exist_ok=True)
+
+        file = request.files['file']
+        file_path = os.path.join(dir_path, file.filename)
+        file.save(file_path)
+
+        uploaded_at = datetime.utcnow().isoformat()
+
         raw_text = extract_text_from_pdf(file_path)
         chunks = chunk_text(raw_text)
 
@@ -94,19 +94,21 @@ def upload_pdf():
         os.makedirs(index_path, exist_ok=True)
         vector_db.save_local(index_path)
 
-        # Store document metadata
+        # Save metadata
         supabase.table("documents").insert({
             "user_id": int(user_id),
             "unit_id": int(unit_id),
             "file_name": file.filename,
             "timestamp": uploaded_at,
-            "file_path": file_path,  # Store the path for retrieval
+            "file_path": file_path
         }).execute()
 
         return jsonify({"message": "Lecture notes uploaded and indexed successfully."})
 
     except Exception as e:
+        print("Error during upload:", str(e))  # 🛑 ADD THIS
         return jsonify({"error": str(e)}), 500
+
 
 
 
@@ -225,11 +227,6 @@ def ask_question():
         return jsonify({"error": str(e)}), 500
 
 
-
-
-
-
-
 @app.route('/units', methods=['POST','GET'])
 def manage_units():
     if request.method == 'POST':
@@ -324,11 +321,10 @@ def generate_questions_by_topic():
 
     question_set_id = str(uuid.uuid4())
     supabase.table("generated_questions").insert({
-        "id": question_set_id,
         "user_id": str(user_id),
         "unit_id": str(unit_id),
         "topic": topic,
-        "question_type": question_type,
+        "style": question_type,
         "raw_questions": raw_questions,
         "structured_questions": structured_questions,
         "timestamp": uploaded_at
