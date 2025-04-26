@@ -44,8 +44,8 @@ def chunk_text(text, chunk_size=500, chunk_overlap=50):
 def generate_exam_questions(context_text, style_reference=None):
     try:
         client = Together(api_key=TOGETHER_API_KEY)
-        style_instruction = f" Match the style of the following example question:\n{style_reference}\n" if style_reference else ""
-        prompt = f"Based on the following lecture content, generate 5 exam-style questions that test understanding of the topic.{style_instruction}\n\nLecture Notes:\n{context_text}\n\nQuestions:"
+        style_instruction = f" Match the style of the following question and answer/s format:\n{style_reference}\n" if style_reference else ""
+        prompt = f"Based on the following lecture content, generate 5 exam-style questions with associated answers as given by the format that test understanding of the topic.{style_instruction}\n\nLecture Notes:\n{context_text}\n\nQuestions:"
 
         response = client.chat.completions.create(
             model="meta-llama/Llama-3-8b-chat-hf",

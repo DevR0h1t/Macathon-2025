@@ -49,5 +49,59 @@ def parse_generated_questions(raw_text, question_type):
                 "correctAnswer": correct_answer
             })
             question_id += 1
+    
+    elif question_type == 'true-false':
+        # Parse true/false questions
+        question_blocks = re.split(r'\s*Question\s+\d+:\s*', raw_text)
+        question_blocks = [q.strip() for q in question_blocks if q.strip()]
+    
+        question_id = 1
+        for block in question_blocks:
+            parts = re.split(r'\s*Answer:\s*', block, maxsplit=1)
+            question_text = parts[0].strip()
+    
+            if len(parts) == 2:
+                answer_text = parts[1].strip().lower()
+                if answer_text == "true":
+                    correct_answer = True
+                elif answer_text == "false":
+                    correct_answer = False
+                else:
+                    correct_answer = None  # or maybe raise an error
+            else:
+                correct_answer = None
+    
+            questions.append({
+                "id": question_id,
+                "question": question_text,
+                "options": ["True", "False"],
+                "correctAnswer": correct_answer
+            })
+            question_id += 1
 
-        return questions
+
+    elif question_type == 'open-ended':
+        # Parse open-ended questions
+        # Split by "Question X:"
+        question_blocks = re.split(r'\s*Question\s+\d+:\s*', raw_text)
+        question_blocks = [q.strip() for q in question_blocks if q.strip()]
+
+        question_id = 1
+        for block in question_blocks:
+            # Look for "Answer: ..." separator
+            parts = re.split(r'\s*Answer:\s*', block, maxsplit=1)
+            if len(parts) == 2:
+                question_text = parts[0].strip()
+                answer_text = parts[1].strip()
+            else:
+                question_text = block.strip()
+                answer_text = ""
+
+            questions.append({
+                "id": question_id,
+                "question": question_text,
+                "answer": answer_text
+            })
+            question_id += 1
+
+    return questions
